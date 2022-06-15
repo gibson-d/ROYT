@@ -1,0 +1,482 @@
+library(nimble)
+# Specify model in NIMBLE language
+nimble.code <- nimbleCode( {
+  
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  # Part 1: Structural Model
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  # 1.Priors for correlation matrices
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  # Error/Covariance terms for breeding-season detection rates
+  for(i in 1:n.state){
+    sig.p[i] ~ dgamma(1,1)
+    Delta.p[i,i] <- pow(Q.p[i,i], -0.5)
+    Lambda.p[i,i] <- sig.p[i]
+    
+  }
+  for (i in 2:n.state){
+    for (j in 1:(i-1)){
+      Lambda.p[i,j] <- 0
+      Delta.p[i,j] <- 0
+    }
+  }
+  Sigma.p[1:n.state,1:n.state] <- Lambda.p[1:n.state,1:n.state] %*% P.p[1:n.state,1:n.state] %*% Lambda.p[1:n.state,1:n.state]
+  Q.p[1:n.state,1:n.state] ~ dinvwish(S = I.p[1:n.state,1:n.state], df = n.state + 1)
+  P.p[1:n.state,1:n.state] <- Delta.p[1:n.state,1:n.state] %*% Q.p[1:n.state,1:n.state] %*% Delta.p[1:n.state,1:n.state]
+  
+  for (i in 1:n.state){
+    for (j in 1:n.state){
+      rho.p[i,j] <- Sigma.p[i,j]/sqrt(Sigma.p[i,i] * Sigma.p[j,j])
+    }
+  }
+  # Error/Covariance terms for fishery harvest data
+  for(i in 1:n.triple){
+         sig.harv[i] ~ dunif(0,5)
+     Delta.harv[i,i] <- pow(Q.harv[i,i], -0.5)
+    Lambda.harv[i,i] <- sig.harv[i]
+  # Error/Covariance terms for fish production data   
+         sig.fish[i] ~ dunif(0,5)
+     Delta.fish[i,i] <- pow(Q.fish[i,i], -0.5)
+    Lambda.fish[i,i] <- sig.fish[i]
+  }
+  for (i in 2:n.triple){
+    for (j in 1:(i-1)){
+      Lambda.harv[i,j] <- 0
+       Delta.harv[i,j] <- 0
+      
+      Lambda.fish[i,j] <- 0
+       Delta.fish[i,j] <- 0
+    }
+  }
+  Sigma.harv[1:n.triple,1:n.triple] <- Lambda.harv[1:n.triple,1:n.triple] %*% P.harv[1:n.triple,1:n.triple] %*% Lambda.harv[1:n.triple,1:n.triple]
+      Q.harv[1:n.triple,1:n.triple] ~ dinvwish(S = I.harv[1:n.triple,1:n.triple], df = n.triple + 1)
+      P.harv[1:n.triple,1:n.triple] <- Delta.harv[1:n.triple,1:n.triple] %*% Q.harv[1:n.triple,1:n.triple] %*% Delta.harv[1:n.triple,1:n.triple]
+  
+  Sigma.fish[1:n.triple,1:n.triple] <- Lambda.fish[1:n.triple,1:n.triple] %*% P.fish[1:n.triple,1:n.triple] %*% Lambda.fish[1:n.triple,1:n.triple]
+      Q.fish[1:n.triple,1:n.triple] ~ dinvwish(S = I.fish[1:n.triple,1:n.triple], df = n.triple + 1)
+      P.fish[1:n.triple,1:n.triple] <- Delta.fish[1:n.triple,1:n.triple] %*% Q.fish[1:n.triple,1:n.triple] %*% Delta.fish[1:n.triple,1:n.triple]
+  
+  for (i in 1:n.triple){
+    for (j in 1:n.triple){
+      rho.harv[i,j] <- Sigma.harv[i,j]/sqrt(Sigma.harv[i,i] * Sigma.harv[j,j])
+      rho.fish[i,j] <- Sigma.fish[i,j]/sqrt(Sigma.fish[i,i] * Sigma.fish[j,j])
+    }
+  }
+      
+  # Error/Covariance terms for ROYT mortality data
+  sig.surv2 ~ dunif(0,5)
+  for(i in 1:n.age_class){
+    sig.surv[i] ~ dgamma(1,1)
+    Delta.surv[i,i] <- pow(Q.surv[i,i], -0.5)
+    Lambda.surv[i,i] <- sig.surv[i]
+  }
+  for (i in 2:n.age_class){
+    for (j in 1:(i-1)){
+      Lambda.surv[i,j] <- 0
+      Delta.surv[i,j] <- 0
+    }
+  }
+  Sigma.surv[1:n.age_class,1:n.age_class] <- Lambda.surv[1:n.age_class,1:n.age_class] %*% P.surv[1:n.age_class,1:n.age_class] %*% Lambda.surv[1:n.age_class,1:n.age_class]
+  Q.surv[1:n.age_class,1:n.age_class] ~ dinvwish(S = I.surv[1:n.age_class,1:n.age_class], df = n.age_class + 1)
+  P.surv[1:n.age_class,1:n.age_class] <- Delta.surv[1:n.age_class,1:n.age_class] %*% Q.surv[1:n.age_class,1:n.age_class] %*% Delta.surv[1:n.age_class,1:n.age_class]
+  
+  for (i in 1:n.age_class){
+    for (j in 1:n.age_class){
+      rho.surv[i,j] <- Sigma.surv[i,j]/sqrt(Sigma.surv[i,i] * Sigma.surv[j,j])
+    }
+  }
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  # 2. Environmental model
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  # Fishery harvest parameters
+  beta.effort[1] <- 0
+  beta.effort[2] ~ dnorm(0, 0.01) # correlation between # hooks and landings via long-line fishing
+  beta.effort[3] <- 0
+  
+  for (i in 1:n.harv) {
+    harv.trend[i] ~ dunif(-1.5, 1.5) # time trend
+       nu.harv[i] ~ dnorm(0, 0.01)   # intercept
+      phi.harv[i] ~ dunif(-1, 1)     # AR1
+  } 
+  mu.hooks   ~ dnorm(0, 0.01)        # intercept hooks
+  sig.hooks  ~ dunif(0,5)            # error hooks
+  phi.hook ~ dunif(-1, 1)            # AR1 hooks
+
+  # Hook Model   
+  nu.hooks[1] <- mu.hooks + 1 * hooks[1]
+  for (t in 2:sem_year) {
+    nu.hooks[t] <- mu.hooks + phi.hook * (pel.eff[t-1] - nu.hooks[t-1]) + 1 * hooks[t]
+  }
+  for (t in 1:sem_year) {
+    hooks[t] ~ dnorm(0, sd = 1)
+    pel.eff[t] ~ dnorm(nu.hooks[t], sd = sig.hooks)
+  # Fishery Harvest Model
+    harvest[t, 1:n.harv] ~ dmnorm(mu.harv[t, 1:n.harv], cov = Sigma.harv[1:n.harv,  1:n.harv])
+  }
+  for (i in 1:n.harv) {
+    t.harv[1,i] <-  harvest[1,i] -  (nu.harv[i] + harv.trend[i] * tsem[1])
+    e.harv[1, i] <- (harvest[1,i] - mu.harv[1, i])
+    mu.harv[1, i] <- nu.harv[i] + harv.trend[i] * tsem[1] + beta.clim2[i] * sst[1]
+    for (t in 2:sem_year) {
+      e.harv[t, i] <- (harvest[t,i] - mu.harv[t, i])
+      #De-trend covariates
+        t.harv[t,i] <-  harvest[t,i] -  (nu.harv[i] + harv.trend[i] * tsem[t])
+      mu.harv[t, i] <- nu.harv[i]  + harv.trend[i] * tsem[t] + beta.clim2[i] * sst[t] + phi.harv[i] * e.harv[t - 1, i] + beta.effort[i] * hooks[t]
+    }
+  }
+  # Fish production parameters
+  for (i in 1:n.fish) {
+    fish.trend[i]  ~ dunif(-2.5, 2.5)
+       nu.fish[i] ~ dnorm(0, 0.01)
+      phi.fish[i] ~ dunif(-1, 1)
+  }
+  for (t in 1:sem_year) {
+    fish[t, 1:n.fish] ~ dmnorm(mu.fish[t, 1:n.fish], cov = Sigma.fish[1:n.fish, 1:n.fish])
+  }
+  for (i in 1:n.fish) {
+      e.fish[1,i] <- (fish[1,i] -  mu.fish[1,i])
+    mu.fish[1, i] <- nu.fish[i] + fish.trend[i] * tsem[1] + beta.clim[i] * sst[1]
+    #De-trend covariate
+    t.fish[1,i] <-  fish[1,i] -  (nu.fish[i] + fish.trend[i] * tsem[1])
+    for (t in 2:sem_year) {
+        e.fish[t,i] <- (fish[t,i] -  mu.fish[t,i])
+        t.fish[t,i] <-  fish[t,i] -  (nu.fish[i] + fish.trend[i] * tsem[t])
+      mu.fish[t, i] <- nu.fish[i] + fish.trend[i] * tsem[t] + beta.clim[i] * sst[t] +  beta.harv[1,i] * harvest[t- 1, 3]  +  beta.harv[2,i] * harvest[t- 1, 2]  + phi.fish[i] * e.fish[t - 1, i]
+    }
+  }
+  
+  # Environmental Model Covariates
+  beta.clim[1]      <- beta.cov[1]  # SST -> MEN
+  beta.clim[2]      <- beta.cov[2]  # SST -> DRU
+  beta.clim[3]      <- beta.cov[3]  # SST -> HER
+  
+  beta.harv[1,1]    <- beta.cov[4]  # TRAWL -> MEN
+  beta.harv[1,2]    <- beta.cov[5]  # TRAWL -> DRU
+  beta.harv[1,3]    <- beta.cov[6]  # TRAWL -> HER
+  
+  beta.harv[2,1]    <- beta.cov[7]  # Long-line -> MEN
+  beta.harv[2,2]    <- beta.cov[8]  # Long-line -> DRU
+  beta.harv[2,3]    <- beta.cov[9]  # Lone-line -> HER
+  
+  beta.clim2[1]     <- beta.cov[10] # SST -> CAR
+  beta.clim2[2]     <- beta.cov[11] # SST -> CON
+  beta.clim2[3]     <- beta.cov[12] # SST -> TRAW
+  
+  for (i in 1:12) {
+    beta.cov[i]  ~ dunif(-1, 1)
+  }
+  
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  # 3. Demographic model
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  
+  #------------------------------------------------------------------------------------#
+  # Parameters:
+  # S: survival probability
+  # F: system fidelity
+  # psi: within-system breeding fidelity
+  # p: breeding season re-encounter probability
+  # R: non-breeding resight probability given survival from t to t+1
+  # Rp (R'): non-breeding resight probability given mortality during interval t to t+1
+  # r: band recovery probability
+  #------------------------------------------------------------------------------------#
+  
+  # Calculate residual variation
+  for (t in 1:(n.occasions-1)) {
+    for(a in 1:3){
+      resid.surv[a,t] <- (eps.surv[a, t] - b0[a])^2
+    }
+  }
+  
+  for(a in 1:3){
+    sd.y2[a]  <- sqrt( (sum(resid.surv[a,1:(n.occasions-1)])/(n.occasions-1)) + (PI^2)/3 )
+  }
+  
+  # Standardized Effect Sizes
+  for(a in 1:3){
+    for(c in 1:8){
+      b1.std[a,c] <- b1[a,c] * (1/sd.y2[a])
+    }
+  }
+  
+  # Intercept adjustment terms for band-type effects
+  band.r[1] <- 0            # Metal-only
+  band.R[1] <- 0            # Metal-only
+  band.p[1] <- 0            # Metal-only
+  band.r[2] ~ dlogis(0,1)   # Early Field Readables
+  band.R[2] ~ dlogis(0,1)   # Early Field Readables
+  band.p[2] ~ dlogis(0,1)   # Early Field Readables
+  band.r[3] ~ dlogis(0,1)   # Late Field Readables
+  band.R[3] ~ dlogis(0,1)   # Late Field Readables
+  band.p[3] ~ dlogis(0,1)   # Late Field Readables
+  
+  # Environmental covariate effects
+  for(a in 1:3){
+    for(j in 1:8){
+      b1[a,j] ~ dnorm(0, sd = 1)
+    }
+    # Calculate type-specific contributions to mortality risk
+    for (t in 1:(n.occasions-1)) {
+      mod.clim[a,t] <- (b1[a,1] * sst[t + gap_sem])
+      mod.harv[a,t] <- (b1[a,2] * harvest[t + gap_sem, 1] + b1[a,3] * harvest[t+ gap_sem,2] + b1[a,4] * harvest[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem])
+      mod.fish[a,t] <- (b1[a,5] * fish[t+ gap_sem, 1] + b1[a,6] * fish[t+ gap_sem,2]+ b1[a,7] * fish[t+ gap_sem,3])
+      
+      dev.clim[a,t] <- exp(-exp(b0[a] + b1[a,1] * sst[t + gap_sem]))  - B0[a]
+      dev.harv[a,t] <- exp(-exp(b0[a] + b1[a,2] * harvest[t + gap_sem, 1] + b1[a,3] * harvest[t+ gap_sem,2] + b1[a,4] * harvest[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem]))  - B0[a]
+      dev.fish[a,t] <- exp(-exp(b0[a] + b1[a,5] * fish[t+ gap_sem, 1] + b1[a,6] *  fish[t+ gap_sem,2]+ b1[a,7] * fish[t+ gap_sem,3]))  - B0[a]
+      
+      # Linear survival model
+      mu.S[a, t] <- b0[a] + mod.clim[a,t] + mod.harv[a,t] + mod.fish[a,t] 
+    }
+    # Intercept: log-log 
+    lb0[a] ~ dexp(1)
+     b0[a] <- log(lb0[a])
+     B0[a] <- exp(-exp(b0[a]))
+  }
+  # Intercept-adjust terms for second (relative to first) and fourth (relative to third) year mortality
+  beta.offset[1] ~ dnorm(0,1)
+  beta.offset[2] ~ dnorm(0,1)
+  # Residual error 
+  for(t in 1:(n.occasions-1)){
+    eps.surv[1:3,t] ~ dmnorm(mu.S[1:3,t], cov = Sigma.surv[1:3,1:3])
+  }
+  # Age-specific (1-25) mortality
+  for(t in 1:(n.occasions-1)){
+    S[1,t] <- exp(-exp(eps.surv[1,t]))
+    S[2,t] <- exp(-exp(beta.offset[1] + eps.surv[1,t]))
+    S[3,t] <- exp(-exp(eps.surv[2,t]))
+    S[4,t] <- exp(-exp(beta.offset[2] + eps.surv[2,t]))
+    for(i in 1:21){
+      S[i+4,t] <- exp(-exp(beta.age[i] + eps.surv[3,t]))
+    }
+  }
+  # Random-effect of age for adults (5 - 25+ years)
+  for(i in 1:21){
+    beta.age[i] ~ dnorm(0, sd = sig.surv2)
+  }
+  S.age[1] <- exp(-exp(b0[1]))
+  S.age[2] <- exp(-exp(b0[1] + beta.offset[1]))
+  S.age[3] <- exp(-exp(b0[2]))
+  S.age[4] <- exp(-exp(b0[2] + beta.offset[2]))
+  for(t in 5:25){
+    S.age[t] <- exp(-exp(b0[3] + beta.age[t-4]))
+  }
+  # Mean breeding detection rate
+  for(i in 1:2){
+    mean.p[i] ~ dlogis(-4,1)
+  }
+  mean.psi ~ dbeta(1,1)    # Mean fidelity to state (NC or VA)
+    mean.F ~ dbeta(1,1)    # Mean fidelity to mid-Atlantic
+    mean.r ~ dlogis(-4,1)  # Mean recovery rate
+     sig.r ~ dunif(0, 20)  # Error recovery 
+     sig.R ~ dunif(0, 20)  # Error non-breeding resight
+    mean.R ~ dlogis(-4,1)  # Mean non-breeding resight
+  
+  for(a in 1:4){
+    mean.bp[a] ~ dbeta(1,1) # Mean age-specific relative breeding propensity
+  }
+  for(a in 1:3){
+    b2[a] ~ dnorm(0, 0.01)  # Effect of landings on recovery rates
+    b3[a] ~ dnorm(0, 0.01)  # Effects of fish production on recovery rates
+    b2.std[a] <- b2[a] * (1/sd.r2) # Standardize effects
+    b3.std[a] <- b3[a] * (1/sd.r2) # Standardize effects
+  }   
+  b2[4] ~ dnorm(0, 0.01)         # Effect of hooks on recovery rates
+  b2.std[4] <- b2[4] * (1/sd.r2) # Standardize effects
+  sd.r2  <- sqrt( (sum(resid.r[1:(n.occasions-1)])/(n.occasions-1)) + (PI^2)/3 ) # Calculate residual error term
+  # Linear recovery model
+  for(t in 1:(n.occasions-1)){
+    mu.r[t] <- mean.r + inprod(b2[1:3], harvest[t+ gap_sem, 1:3])  + inprod(b3[1:3], fish[t+ gap_sem, 1:3]) + b2[4] * pel.eff[t + gap_sem]
+      lr[t] ~ dnorm(mu.r[t], sd = sig.r)
+    resid.r[t] <- (lr[t] - mean.r)^2
+    # Recovery rate (logit scale)
+    for(l in 1:band_type){ 
+      logit(r[l,t]) <- lr[t] + band.r[l]
+    }
+    # Breeding detection rate (logit scale)
+    for(k in 1:2){
+      for(l in 1:band_type){
+        logit(p[k,l,t]) <- lp[k,t] + band.p[l]
+      }
+    }
+    
+    lp[1:2,t] ~ dmnorm(mean.p[1:2], cov = Sigma.p[1:2,1:2])
+    
+    #Non-breeding detection rates (logit scale)
+    for(l in 1:band_type){
+      logit(R[l,t]) <- lR[t]+ band.R[l]
+           Rp[l,t] <- R[l,t]/2   # R prime
+    }
+    #Non-breeding detection rate (linear scale)
+    lR[t]  ~ dnorm(mean.R, sd = sig.R)
+    # Apply age-related constraints to mid-atlantic fidelity terms
+    for(k in 1:n.state){
+      F[k,1,t] <- 1
+      F[k,2,t] <- 1
+      F[k,3,t] <- 1
+      F[k,4,t] <- mean.F
+      F[k,5,t] <- mean.F
+      F[k,6,t] <- mean.F
+      # Apply age-related constraints to state-specific fidelity terms
+      psi[k,1,t] <- 1
+      psi[k,2,t] <- mean.psi
+      psi[k,3,t] <- mean.psi
+      psi[k,4,t] <- mean.psi
+      psi[k,5,t] <- mean.psi
+      psi[k,6,t] <- mean.psi
+      # Apply age-related constraints to relative breeding propensity terms
+      bp[k,1,t] <- 0
+      bp[k,2,t] <- mean.bp[1]
+      bp[k,3,t] <- mean.bp[2]
+      bp[k,4,t] <- mean.bp[3]
+      bp[k,5,t] <- mean.bp[4]
+      bp[k,6,t] <- 1
+    }
+  }
+  #####################################################################################
+  #--------------------------------------
+  # Latent states (Psi):
+  # 1) alive, north carolina
+  # 2) alive, virginia
+  # 3) permanent emigrant
+  # 4) recently dead, recovered
+  # 5) recently dead, resighted
+  # 6) dead in previous interval
+  #--------------------------------------
+  #####################################################################################
+  for(t in 1:(n.occasions-1)){
+    for(l in 1:band_type){
+      for(a in 1:n.age){
+        # 1) alive, north carolina
+        Psi[1,l,a,t,1] <- S[a,t] * F[1,ac[a],t] * psi[1,ac[a],t]
+        Psi[1,l,a,t,2] <- S[a,t] * F[1,ac[a],t] * (1 - psi[1,ac[a],t])
+        Psi[1,l,a,t,3] <- S[a,t] * (1 - F[1,ac[a],t])
+        Psi[1,l,a,t,4] <- (1 - S[a,t])* r[l,t]
+        Psi[1,l,a,t,5] <- (1 - S[a,t])*Rp[l,t] * ( 1 - r[l,t])
+        Psi[1,l,a,t,6] <- (1 - S[a,t])*(1 - Rp[l,t])  * ( 1 - r[l,t])
+        # 2) alive, virginia
+        Psi[2,l,a,t,1] <- S[a,t] * F[2,ac[a],t] * (1 - psi[2,ac[a],t])
+        Psi[2,l,a,t,2] <- S[a,t] * F[2,ac[a],t] * psi[2,ac[a],t]
+        Psi[2,l,a,t,3] <- S[a,t] * (1 - F[2,ac[a],t])
+        Psi[2,l,a,t,4] <- (1 - S[a,t])* r[l,t]
+        Psi[2,l,a,t,5] <- (1 - S[a,t])*Rp[l,t] * ( 1 - r[l,t])
+        Psi[2,l,a,t,6] <- (1 - S[a,t])*(1 - Rp[l,t]) * ( 1 - r[l,t])
+        # 3) permanent emigrant
+        Psi[3,l,a,t,1] <- 0
+        Psi[3,l,a,t,2] <- 0
+        Psi[3,l,a,t,3] <- S[a,t]
+        Psi[3,l,a,t,4] <- (1 - S[a,t])* r[l,t]
+        Psi[3,l,a,t,5] <- (1 - S[a,t])*Rp[l,t] * ( 1 - r[l,t])
+        Psi[3,l,a,t,6] <- (1 - S[a,t])*(1 - Rp[l,t])  * ( 1 - r[l,t])
+        # 4) recently dead, recovered
+        Psi[4,l,a,t,1] <- 0
+        Psi[4,l,a,t,2] <- 0
+        Psi[4,l,a,t,3] <- 0
+        Psi[4,l,a,t,4] <- 0
+        Psi[4,l,a,t,5] <- 0
+        Psi[4,l,a,t,6] <- 1
+        # 5) recently dead, resighted
+        Psi[5,l,a,t,1] <- 0
+        Psi[5,l,a,t,2] <- 0
+        Psi[5,l,a,t,3] <- 0
+        Psi[5,l,a,t,4] <- 0
+        Psi[5,l,a,t,5] <- 0
+        Psi[5,l,a,t,6] <- 1
+        # 6) dead in previous interval
+        Psi[6,l,a,t,1] <- 0
+        Psi[6,l,a,t,2] <- 0
+        Psi[6,l,a,t,3] <- 0
+        Psi[6,l,a,t,4] <- 0
+        Psi[6,l,a,t,5] <- 0
+        Psi[6,l,a,t,6] <- 1
+      }
+      
+      #####################################################################################
+      #--------------------------------------
+      # Breeding observations (o ~ Omega):
+      # 1) seen in NC, seen during non-breeding season in Florida
+      # 2) seen in VA, seen during non-breeding season in Florida
+      # 3) seen in NC, not seen during non-breeding season in Florida
+      # 4) seen in VA, not seen during non-breeding season in Florida
+      # 5) not seen during breeding season, seen during non-breeding season in Florida
+      # 6) not seen breeding, not seen during non-breeding season in Florida
+      # 7) recovered dead (anywhere)
+      #--------------------------------------
+      #####################################################################################
+      
+      for(a in 1:n.ageclass){
+        
+        Omega[1,l,a,t,1] <- bp[1,a,t]  * p[1,l,t] * R[l,t]
+        Omega[1,l,a,t,2] <- 0
+        Omega[1,l,a,t,3] <- bp[1,a,t]  * p[1,l,t] * (1 - R[l,t])
+        Omega[1,l,a,t,4] <- 0
+        Omega[1,l,a,t,5] <- (1 - p[1,l,t]*bp[1,a,t]) * R[l,t]
+        Omega[1,l,a,t,6] <- (1 - p[1,l,t]*bp[1,a,t]) * (1 - R[l,t])
+        Omega[1,l,a,t,7] <- 0
+        
+        Omega[2,l,a,t,1] <- 0
+        Omega[2,l,a,t,2] <- bp[2,a,t] * p[2,l,t]*R[l,t]
+        Omega[2,l,a,t,3] <-  0
+        Omega[2,l,a,t,4] <- bp[2,a,t] * p[2,l,t]*(1 - R[l,t])
+        Omega[2,l,a,t,5] <- (1 - p[2,l,t]*bp[2,a,t])*R[l,t]
+        Omega[2,l,a,t,6] <- (1 - p[2,l,t]*bp[2,a,t])*(1 - R[l,t])
+        Omega[2,l,a,t,7] <- 0
+        
+        Omega[3,l,a,t,1] <- 0
+        Omega[3,l,a,t,2] <- 0
+        Omega[3,l,a,t,3] <- 0
+        Omega[3,l,a,t,4] <- 0
+        Omega[3,l,a,t,5] <- R[l,t]
+        Omega[3,l,a,t,6] <- (1 - R[l,t])
+        Omega[3,l,a,t,7] <- 0
+        
+        Omega[4,l,a,t,1] <- 0
+        Omega[4,l,a,t,2] <- 0
+        Omega[4,l,a,t,3] <- 0
+        Omega[4,l,a,t,4] <- 0
+        Omega[4,l,a,t,5] <- 0
+        Omega[4,l,a,t,6] <- 0
+        Omega[4,l,a,t,7] <- 1
+        
+        Omega[5,l,a,t,1] <- 0
+        Omega[5,l,a,t,2] <- 0
+        Omega[5,l,a,t,3] <- 0
+        Omega[5,l,a,t,4] <- 0
+        Omega[5,l,a,t,5] <- 1
+        Omega[5,l,a,t,6] <- 0
+        Omega[5,l,a,t,7] <- 0
+        
+        Omega[6,l,a,t,1] <- 0
+        Omega[6,l,a,t,2] <- 0
+        Omega[6,l,a,t,3] <- 0
+        Omega[6,l,a,t,4] <- 0
+        Omega[6,l,a,t,5] <- 0
+        Omega[6,l,a,t,6] <- 1
+        Omega[6,l,a,t,7] <- 0
+      }
+    }
+  }
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  # Marginal Model Likelihood
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+  
+  for(i in 1:NsumCH){
+    pz[i,sumf[i],1] <- equals(sumCH[i,sumf[i]],1)
+    pz[i,sumf[i],2] <- equals(sumCH[i,sumf[i]],2)
+    pz[i,sumf[i],3] <- 0
+    pz[i,sumf[i],4] <- 0
+    pz[i,sumf[i],5] <- 0
+    pz[i,sumf[i],6] <- 0
+    
+    for (t in sumf[i]:(lc[i]-1)){
+      for (j in 1:6){
+        pz[i,(t+1),j] <- inprod(pz[i,t,1:6], Psi[1:6,band[i],age[i,t],t,j]) * Omega[j,band[i],age_class[i,t],t, sumCH[i,(t+1)] ]
+      }
+    }
+    
+    lik[i] <- sum(pz[i,lc[i],1:6])
+    one[i] ~ dbin(lik[i],sumFR[i])
+  }
+  
+})
