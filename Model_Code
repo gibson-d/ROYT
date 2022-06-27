@@ -10,15 +10,15 @@ nimble.code <- nimbleCode( {
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
   # Error/Covariance terms for breeding-season detection rates
   for(i in 1:n.state){
-    sig.p[i] ~ dgamma(1,1)
-    Delta.p[i,i] <- pow(Q.p[i,i], -0.5)
+         sig.p[i] ~ T(dt(0, pow(2.5, -2), 1),0,)
+     Delta.p[i,i] <- pow(Q.p[i,i], -0.5)
     Lambda.p[i,i] <- sig.p[i]
     
   }
   for (i in 2:n.state){
     for (j in 1:(i-1)){
       Lambda.p[i,j] <- 0
-      Delta.p[i,j] <- 0
+       Delta.p[i,j] <- 0
     }
   }
   Sigma.p[1:n.state,1:n.state] <- Lambda.p[1:n.state,1:n.state] %*% P.p[1:n.state,1:n.state] %*% Lambda.p[1:n.state,1:n.state]
@@ -32,11 +32,11 @@ nimble.code <- nimbleCode( {
   }
   # Error/Covariance terms for fishery harvest data
   for(i in 1:n.triple){
-         sig.harv[i] ~ dunif(0,5)
+         sig.harv[i] ~ T(dt(0, pow(2.5, -2), 1),0,)
      Delta.harv[i,i] <- pow(Q.harv[i,i], -0.5)
     Lambda.harv[i,i] <- sig.harv[i]
   # Error/Covariance terms for fish production data   
-         sig.fish[i] ~ dunif(0,5)
+         sig.fish[i] ~ T(dt(0, pow(2.5, -2), 1),0,)
      Delta.fish[i,i] <- pow(Q.fish[i,i], -0.5)
     Lambda.fish[i,i] <- sig.fish[i]
   }
@@ -65,16 +65,16 @@ nimble.code <- nimbleCode( {
   }
       
   # Error/Covariance terms for ROYT mortality data
-  sig.surv2 ~ dunif(0,5)
+  sig.surv2 ~ T(dt(0, pow(2.5, -2), 1),0,)
   for(i in 1:n.age_class){
-    sig.surv[i] ~ dgamma(1,1)
-    Delta.surv[i,i] <- pow(Q.surv[i,i], -0.5)
+         sig.surv[i] ~ dgamma(1,1)
+     Delta.surv[i,i] <- pow(Q.surv[i,i], -0.5)
     Lambda.surv[i,i] <- sig.surv[i]
   }
   for (i in 2:n.age_class){
     for (j in 1:(i-1)){
       Lambda.surv[i,j] <- 0
-      Delta.surv[i,j] <- 0
+       Delta.surv[i,j] <- 0
     }
   }
   Sigma.surv[1:n.age_class,1:n.age_class] <- Lambda.surv[1:n.age_class,1:n.age_class] %*% P.surv[1:n.age_class,1:n.age_class] %*% Lambda.surv[1:n.age_class,1:n.age_class]
@@ -94,11 +94,13 @@ nimble.code <- nimbleCode( {
   beta.effort[2] ~ dnorm(0, 0.01) # correlation between # hooks and landings via long-line fishing
   beta.effort[3] <- 0
   
-  for (i in 1:n.harv) {
-    harv.trend[i] ~ dunif(-1.5, 1.5) # time trend
-       nu.harv[i] ~ dnorm(0, 0.01)   # intercept
-      phi.harv[i] ~ dunif(-1, 1)     # AR1
-  } 
+      for (i in 1:n.harv) {
+         harv.trend[i] ~ dunif(-1.5, 1.5)  # linear trend for harvest parameters
+        harv.trend2[i] ~ dunif(-1.5, 1.5)  # quadratic trend for harvest parameters
+            nu.harv[i] ~ dnorm(0, 0.01)    # harvest intercept
+           phi.harv[i] ~ dunif(-1, 1)      # AR1 parameteter (harvest)
+      }
+      
   mu.hooks   ~ dnorm(0, 0.01)        # intercept hooks
   sig.hooks  ~ dunif(0,5)            # error hooks
   phi.hook ~ dunif(-1, 1)            # AR1 hooks
@@ -109,42 +111,37 @@ nimble.code <- nimbleCode( {
     nu.hooks[t] <- mu.hooks + phi.hook * (pel.eff[t-1] - nu.hooks[t-1]) + 1 * hooks[t]
   }
   for (t in 1:sem_year) {
-    hooks[t] ~ dnorm(0, sd = 1)
+      hooks[t] ~ dnorm(0, sd = 1)
     pel.eff[t] ~ dnorm(nu.hooks[t], sd = sig.hooks)
   # Fishery Harvest Model
     harvest[t, 1:n.harv] ~ dmnorm(mu.harv[t, 1:n.harv], cov = Sigma.harv[1:n.harv,  1:n.harv])
   }
-  for (i in 1:n.harv) {
-    t.harv[1,i] <-  harvest[1,i] -  (nu.harv[i] + harv.trend[i] * tsem[1])
-    e.harv[1, i] <- (harvest[1,i] - mu.harv[1, i])
-    mu.harv[1, i] <- nu.harv[i] + harv.trend[i] * tsem[1] + beta.clim2[i] * sst[1]
-    for (t in 2:sem_year) {
-      e.harv[t, i] <- (harvest[t,i] - mu.harv[t, i])
-      #De-trend covariates
-        t.harv[t,i] <-  harvest[t,i] -  (nu.harv[i] + harv.trend[i] * tsem[t])
-      mu.harv[t, i] <- nu.harv[i]  + harv.trend[i] * tsem[t] + beta.clim2[i] * sst[t] + phi.harv[i] * e.harv[t - 1, i] + beta.effort[i] * hooks[t]
-    }
-  }
+      for (i in 1:n.harv) {
+        e.harv[1, i] <- (harvest[1,i] - mu.harv[1, i])
+        mu.harv[1, i] <- nu.harv[i] + harv.trend[i] * tsem[1] + harv.trend2[i] * tsem[1] * tsem[1] + beta.clim2[i] * sst[1]
+        for (t in 2:sem_year) {
+          e.harv[t, i] <- (harvest[t,i] - mu.harv[t, i])
+          mu.harv[t, i] <- nu.harv[i]  + harv.trend[i] * tsem[t] + harv.trend2[i] * tsem[t] * tsem[t] + beta.clim2[i] * sst[t] + phi.harv[i] * e.harv[t - 1, i] + beta.effort[i] * hooks[t]
+        }
+      }
   # Fish production parameters
-  for (i in 1:n.fish) {
-    fish.trend[i]  ~ dunif(-2.5, 2.5)
-       nu.fish[i] ~ dnorm(0, 0.01)
-      phi.fish[i] ~ dunif(-1, 1)
-  }
-  for (t in 1:sem_year) {
-    fish[t, 1:n.fish] ~ dmnorm(mu.fish[t, 1:n.fish], cov = Sigma.fish[1:n.fish, 1:n.fish])
-  }
-  for (i in 1:n.fish) {
-      e.fish[1,i] <- (fish[1,i] -  mu.fish[1,i])
-    mu.fish[1, i] <- nu.fish[i] + fish.trend[i] * tsem[1] + beta.clim[i] * sst[1]
-    #De-trend covariate
-    t.fish[1,i] <-  fish[1,i] -  (nu.fish[i] + fish.trend[i] * tsem[1])
-    for (t in 2:sem_year) {
-        e.fish[t,i] <- (fish[t,i] -  mu.fish[t,i])
-        t.fish[t,i] <-  fish[t,i] -  (nu.fish[i] + fish.trend[i] * tsem[t])
-      mu.fish[t, i] <- nu.fish[i] + fish.trend[i] * tsem[t] + beta.clim[i] * sst[t] +  beta.harv[1,i] * harvest[t- 1, 3]  +  beta.harv[2,i] * harvest[t- 1, 2]  + phi.fish[i] * e.fish[t - 1, i]
-    }
-  }
+      for (i in 1:n.fish) {
+        fish.trend[i]  ~ dunif(-1.5, 1.5) # Linear trend (fish production)
+       fish.trend2[i]  ~ dunif(-1.5, 1.5) # Quadratic trend (fish production)
+           nu.fish[i] ~ dnorm(0, 0.01)    # Intercept(fish production)
+          phi.fish[i] ~ dunif(-1, 1)      # AR1 parameter (fish production)
+      }
+      for (t in 1:sem_year) {
+        fish[t, 1:n.fish] ~ dmnorm(mu.fish[t, 1:n.fish], cov = Sigma.fish[1:n.fish, 1:n.fish])
+      }
+      for (i in 1:n.fish) {
+        e.fish[1,i] <- (fish[1,i] -  mu.fish[1,i])
+        mu.fish[1, i] <- nu.fish[i] + fish.trend[i] * tsem[1] + fish.trend2[i] * tsem[1]* tsem[1] + beta.clim[i] * sst[1]
+        for (t in 2:sem_year) {
+          e.fish[t,i] <- (fish[t,i] -  mu.fish[t,i])
+          mu.fish[t, i] <- nu.fish[i] + fish.trend[i] * tsem[t] + fish.trend2[i] * tsem[t]* tsem[t] + beta.clim[i] * sst[t] +  beta.harv[1,i] * harvest[t- 1, 3]  +  beta.harv[2,i] * harvest[t- 1, 2]  + phi.fish[i] * e.fish[t - 1, i]
+        }
+      }
   
   # Environmental Model Covariates
   beta.clim[1]      <- beta.cov[1]  # SST -> MEN
@@ -164,9 +161,9 @@ nimble.code <- nimbleCode( {
   beta.clim2[3]     <- beta.cov[12] # SST -> TRAW
   
   for (i in 1:12) {
+  # Directed environmental associations
     beta.cov[i]  ~ dunif(-1, 1)
   }
-  
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
   # 3. Demographic model
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -174,10 +171,10 @@ nimble.code <- nimbleCode( {
   #------------------------------------------------------------------------------------#
   # Parameters:
   # S: survival probability
-  # F: system fidelity
-  # psi: within-system breeding fidelity
+  # F: system fidelity (mid-Atlantic metapopulation)
+  # psi: within-system breeding fidelity (movements between North Carolina and Virginia)
   # p: breeding season re-encounter probability
-  # R: non-breeding resight probability given survival from t to t+1
+  # R: non-breeding resight probability 
   # Rp (R'): non-breeding resight probability given mortality during interval t to t+1
   # r: band recovery probability
   #------------------------------------------------------------------------------------#
@@ -200,7 +197,7 @@ nimble.code <- nimbleCode( {
     }
   }
   
-  # Intercept adjustment terms for band-type effects
+  # Intercept adjustment terms for band-type re-encounter effects
   band.r[1] <- 0            # Metal-only
   band.R[1] <- 0            # Metal-only
   band.p[1] <- 0            # Metal-only
@@ -218,10 +215,11 @@ nimble.code <- nimbleCode( {
     }
     # Calculate type-specific contributions to mortality risk
     for (t in 1:(n.occasions-1)) {
+    # gap_sem = temporal difference between the start of environmental model (1950) and the start of the demographic model (1961)
       mod.clim[a,t] <- (b1[a,1] * sst[t + gap_sem])
       mod.harv[a,t] <- (b1[a,2] * harvest[t + gap_sem, 1] + b1[a,3] * harvest[t+ gap_sem,2] + b1[a,4] * harvest[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem])
       mod.fish[a,t] <- (b1[a,5] * fish[t+ gap_sem, 1] + b1[a,6] * fish[t+ gap_sem,2]+ b1[a,7] * fish[t+ gap_sem,3])
-      
+      # Deviation from mean survivorship
       dev.clim[a,t] <- exp(-exp(b0[a] + b1[a,1] * sst[t + gap_sem]))  - B0[a]
       dev.harv[a,t] <- exp(-exp(b0[a] + b1[a,2] * harvest[t + gap_sem, 1] + b1[a,3] * harvest[t+ gap_sem,2] + b1[a,4] * harvest[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem]))  - B0[a]
       dev.fish[a,t] <- exp(-exp(b0[a] + b1[a,5] * fish[t+ gap_sem, 1] + b1[a,6] *  fish[t+ gap_sem,2]+ b1[a,7] * fish[t+ gap_sem,3]))  - B0[a]
@@ -235,8 +233,8 @@ nimble.code <- nimbleCode( {
      B0[a] <- exp(-exp(b0[a]))
   }
   # Intercept-adjust terms for second (relative to first) and fourth (relative to third) year mortality
-  beta.offset[1] ~ dnorm(0,1)
-  beta.offset[2] ~ dnorm(0,1)
+  beta.offset[1] ~ dnorm(0,1) # Difference between first-year and second-year mortality 
+  beta.offset[2] ~ dnorm(0,1) # Difference between third-year and fourth-year mortality 
   # Residual error 
   for(t in 1:(n.occasions-1)){
     eps.surv[1:3,t] ~ dmnorm(mu.S[1:3,t], cov = Sigma.surv[1:3,1:3])
@@ -266,12 +264,12 @@ nimble.code <- nimbleCode( {
   for(i in 1:2){
     mean.p[i] ~ dlogis(-4,1)
   }
-  mean.psi ~ dbeta(1,1)    # Mean fidelity to state (NC or VA)
-    mean.F ~ dbeta(1,1)    # Mean fidelity to mid-Atlantic
-    mean.r ~ dlogis(-4,1)  # Mean recovery rate
-     sig.r ~ dunif(0, 20)  # Error recovery 
-     sig.R ~ dunif(0, 20)  # Error non-breeding resight
-    mean.R ~ dlogis(-4,1)  # Mean non-breeding resight
+  mean.psi ~ dbeta(1,1)                    # Mean fidelity to state (NC or VA)
+    mean.F ~ dbeta(1,1)                    # Mean fidelity to mid-Atlantic
+    mean.r ~ dlogis(-4,1)                  # Mean recovery rate
+     sig.r ~ T(dt(0, pow(2.5, -2), 1),0,)  # Error recovery 
+     sig.R ~ T(dt(0, pow(2.5, -2), 1),0,)  # Error non-breeding resight
+    mean.R ~ dlogis(-4,1)                  # Mean non-breeding resight
   
   for(a in 1:4){
     mean.bp[a] ~ dbeta(1,1) # Mean age-specific relative breeding propensity
@@ -310,18 +308,19 @@ nimble.code <- nimbleCode( {
     }
     #Non-breeding detection rate (linear scale)
     lR[t]  ~ dnorm(mean.R, sd = sig.R)
+    
     # Apply age-related constraints to mid-atlantic fidelity terms
     for(k in 1:n.state){
-      F[k,1,t] <- 1
-      F[k,2,t] <- 1
-      F[k,3,t] <- 1
+      F[k,1,t] <- 1        # Can't emigrate until old enough to breed
+      F[k,2,t] <- 1        # Can't emigrate until old enough to breed
+      F[k,3,t] <- 1        # Can't emigrate until old enough to breed
       F[k,4,t] <- mean.F
       F[k,5,t] <- mean.F
       F[k,6,t] <- mean.F
       # Apply age-related constraints to state-specific fidelity terms
-      psi[k,1,t] <- 1
-      psi[k,2,t] <- mean.psi
-      psi[k,3,t] <- mean.psi
+      psi[k,1,t] <- 1     # Can't emigrate until old enough to breed
+      psi[k,2,t] <- 1     # Can't emigrate until old enough to breed
+      psi[k,3,t] <- 1     # Can't emigrate until old enough to breed
       psi[k,4,t] <- mean.psi
       psi[k,5,t] <- mean.psi
       psi[k,6,t] <- mean.psi
@@ -337,8 +336,8 @@ nimble.code <- nimbleCode( {
   #####################################################################################
   #--------------------------------------
   # Latent states (Psi):
-  # 1) alive, north carolina
-  # 2) alive, virginia
+  # 1) alive, North carolina
+  # 2) alive, Virginia
   # 3) permanent emigrant
   # 4) recently dead, recovered
   # 5) recently dead, resighted
@@ -349,6 +348,7 @@ nimble.code <- nimbleCode( {
     for(l in 1:band_type){
       for(a in 1:n.age){
         # 1) alive, north carolina
+        # ac = current age-group (1 -> 6+)
         Psi[1,l,a,t,1] <- S[a,t] * F[1,ac[a],t] * psi[1,ac[a],t]
         Psi[1,l,a,t,2] <- S[a,t] * F[1,ac[a],t] * (1 - psi[1,ac[a],t])
         Psi[1,l,a,t,3] <- S[a,t] * (1 - F[1,ac[a],t])
@@ -405,7 +405,7 @@ nimble.code <- nimbleCode( {
       #--------------------------------------
       #####################################################################################
       
-      for(a in 1:n.ageclass){
+      for(a in 1:n.ageclass){  # ageclass = 1 -> 6+
         
         Omega[1,l,a,t,1] <- bp[1,a,t]  * p[1,l,t] * R[l,t]
         Omega[1,l,a,t,2] <- 0
