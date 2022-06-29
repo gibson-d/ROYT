@@ -3,6 +3,12 @@ library(MCMCvis)
 library(coda)
 library(parallel)
 
+covs <- read.csv('https://raw.githubusercontent.com/gibson-d/ROYT/main/standardized_covariates.csv')
+githubURL <- "https://github.com/gibson-d/ROYT/blob/4181df5f68ec6892a4d79139311546befe5eefd1/model_files.rdata"
+load(url(githubURL))
+
+head(df)
+
 # Specify model in NIMBLE language
 nimble.code <- nimbleCode( {
   
