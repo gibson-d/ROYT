@@ -3,11 +3,23 @@ library(MCMCvis)
 library(coda)
 library(parallel)
 
+#Read in covariates
 covs <- read.csv('https://raw.githubusercontent.com/gibson-d/ROYT/main/standardized_covariates.csv')
-githubURL <- "https://github.com/gibson-d/ROYT/blob/4181df5f68ec6892a4d79139311546befe5eefd1/model_files.rdata"
-load(url(githubURL))
 
-head(df)
+#Load banding data
+url <- "https://github.com/gibson-d/ROYT/blob/main/model_files.rdata?raw=true"
+download.file(url, destfile= "model_files.rdata", mode = "wb")
+load("model_files.rdata")
+
+sumFR <- files[[1]]
+sumCH <- data.matrix(files[[2]])
+fc <- files[[3]]
+lc <- files[[4]]
+age_matrix <- files[[5]]
+age_class <- files[[6]]
+band <- files[[7]]
+age_class <- age_matrix
+age_class[age_class>5] <- 6
 
 # Specify model in NIMBLE language
 nimble.code <- nimbleCode( {
@@ -22,8 +34,7 @@ nimble.code <- nimbleCode( {
   for(i in 1:n.state){
     sig.p[i] ~ T(dt(0, pow(2.5, -2), 1),0,)
     Delta.p[i,i] <- pow(Q.p[i,i], -0.5)
-    Lambda.p[i,i] <- sig.p[i]
-    
+    Lambda.p[i,i] <- sig.p[i] 
   }
   for (i in 2:n.state){
     for (j in 1:(i-1)){
@@ -517,21 +528,6 @@ nimble.code <- nimbleCode( {
   
 })
 
-
-setwd('C:\\Users\\gibsond\\Desktop\\ROTE_BARKER')
-
-load('model_files_new.rdata')
-sumFR <- files[[1]]
-sumCH <- data.matrix(files[[2]])
-fc <- files[[3]]
-lc <- files[[4]]
-age_matrix <- files[[5]]
-age_class <- files[[6]]
-band <- files[[7]]
-age_class <- age_matrix
-age_class[age_class>5] <- 6
-
-covs <- read.csv('standardized_covariates.csv')
 
 
 # Bundle data
