@@ -218,28 +218,46 @@ nimble.code <- nimbleCode( {
       b1[a,j] ~ dnorm(0, sd = 1)
     }
     # Calculate type-specific contributions to mortality risk
-    for (t in 1:(n.occasions-1)) {
-      # gap_sem = temporal difference between the start of environmental model (1950) and the start of the demographic model (1961)
+    for(t in 1:5){
+      mod.clim[a,t] <- (b1[a,1] * sst[t + gap_sem])
+      mod.harv[a,t] <- (b1[a,2] * harvest[t + gap_sem, 1] + b1[a,3] * harvest[t+ gap_sem,2] + b1[a,4] * harvest[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem])
+      mod.fish[a,t] <- (b1[a,5] * mu.fish[t+ gap_sem, 1] + b1[a,6] * mu.fish[t+ gap_sem,2]+ b1[a,7] * mu.fish[t+ gap_sem,3])
+      
+      dev.clim[a,t] <- exp(-exp(b0[a] + b1[a,1] * sst[t + gap_sem]))  - B0[a]
+      dev.harv[a,t] <- exp(-exp(b0[a] + b1[a,2] * harvest[t + gap_sem, 1] + b1[a,3] * harvest[t+ gap_sem,2] + b1[a,4] * harvest[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem]))  - B0[a]
+      dev.fish[a,t] <- exp(-exp(b0[a] + b1[a,5] * mu.fish[t+ gap_sem, 1] + b1[a,6] *  mu.fish[t+ gap_sem,2]+ b1[a,7] * mu.fish[t+ gap_sem,3]))  - B0[a]
+    }
+    for(t in 6:54){
       mod.clim[a,t] <- (b1[a,1] * sst[t + gap_sem])
       mod.harv[a,t] <- (b1[a,2] * harvest[t + gap_sem, 1] + b1[a,3] * harvest[t+ gap_sem,2] + b1[a,4] * harvest[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem])
       mod.fish[a,t] <- (b1[a,5] * fish[t+ gap_sem, 1] + b1[a,6] * fish[t+ gap_sem,2]+ b1[a,7] * fish[t+ gap_sem,3])
-      # Deviation from mean survivorship
+      
       dev.clim[a,t] <- exp(-exp(b0[a] + b1[a,1] * sst[t + gap_sem]))  - B0[a]
       dev.harv[a,t] <- exp(-exp(b0[a] + b1[a,2] * harvest[t + gap_sem, 1] + b1[a,3] * harvest[t+ gap_sem,2] + b1[a,4] * harvest[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem]))  - B0[a]
       dev.fish[a,t] <- exp(-exp(b0[a] + b1[a,5] * fish[t+ gap_sem, 1] + b1[a,6] *  fish[t+ gap_sem,2]+ b1[a,7] * fish[t+ gap_sem,3]))  - B0[a]
-      
-      # Linear survival model
-      mu.S[a, t] <- b0[a] + mod.clim[a,t] + mod.harv[a,t] + mod.fish[a,t] 
     }
-    # Intercept: log-log 
+    for(t in 55:(n.occasions-1)){
+      mod.clim[a,t] <- (b1[a,1] * sst[t + gap_sem])
+      mod.harv[a,t] <- (b1[a,2] * mu.harv[t + gap_sem, 1] + b1[a,3] * mu.harv[t+ gap_sem,2] + b1[a,4] * mu.harv[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem])
+      mod.fish[a,t] <- (b1[a,5] * mu.fish[t+ gap_sem, 1] + b1[a,6] * mu.fish[t+ gap_sem,2]+ b1[a,7] * mu.fish[t+ gap_sem,3])
+      
+      dev.clim[a,t] <- exp(-exp(b0[a] + b1[a,1] * sst[t + gap_sem]))  - B0[a]
+      dev.harv[a,t] <- exp(-exp(b0[a] + b1[a,2] * mu.harv[t + gap_sem, 1] + b1[a,3] * mu.harv[t+ gap_sem,2] + b1[a,4] * mu.harv[t+ gap_sem,3] + b1[a,8] * pel.eff[t + gap_sem]))  - B0[a]
+      dev.fish[a,t] <- exp(-exp(b0[a] + b1[a,5] * mu.fish[t+ gap_sem, 1] + b1[a,6] *  mu.fish[t+ gap_sem,2]+ b1[a,7] * mu.fish[t+ gap_sem,3]))  - B0[a]
+    }
+    for (t in 1:(n.occasions-1)) {
+      # Linear survival model
+      mu.S[a, t] <- b0[a] + mod.clim[a,t] + mod.harv[a,t] + mod.fish[a,t]
+    }
+    # Intercept: log-log
     lb0[a] ~ dexp(1)
     b0[a] <- log(lb0[a])
     B0[a] <- exp(-exp(b0[a]))
   }
   # Intercept-adjust terms for second (relative to first) and fourth (relative to third) year mortality
-  beta.offset[1] ~ dnorm(0,1) # Difference between first-year and second-year mortality 
-  beta.offset[2] ~ dnorm(0,1) # Difference between third-year and fourth-year mortality 
-  # Residual error 
+  beta.offset[1] ~ dnorm(0,1) # Difference between first-year and second-year mortality
+  beta.offset[2] ~ dnorm(0,1) # Difference between third-year and fourth-year mortality
+  # Residual error
   for(t in 1:(n.occasions-1)){
     eps.surv[1:3,t] ~ dmnorm(mu.S[1:3,t], cov = Sigma.surv[1:3,1:3])
   }
@@ -271,7 +289,7 @@ nimble.code <- nimbleCode( {
   mean.psi ~ dbeta(1,1)                    # Mean fidelity to state (NC or VA)
   mean.F ~ dbeta(1,1)                    # Mean fidelity to mid-Atlantic
   mean.r ~ dlogis(-4,1)                  # Mean recovery rate
-  sig.r ~ T(dt(0, pow(2.5, -2), 1),0,)  # Error recovery 
+  sig.r ~ T(dt(0, pow(2.5, -2), 1),0,)  # Error recovery
   sig.R ~ T(dt(0, pow(2.5, -2), 1),0,)  # Error non-breeding resight
   mean.R ~ dlogis(-4,1)                  # Mean non-breeding resight
   
@@ -283,17 +301,25 @@ nimble.code <- nimbleCode( {
     b3[a] ~ dnorm(0, 0.01)  # Effects of fish production on recovery rates
     b2.std[a] <- b2[a] * (1/sd.r2) # Standardize effects
     b3.std[a] <- b3[a] * (1/sd.r2) # Standardize effects
-  }   
+  }
   b2[4] ~ dnorm(0, 0.01)         # Effect of hooks on recovery rates
   b2.std[4] <- b2[4] * (1/sd.r2) # Standardize effects
   sd.r2  <- sqrt( (sum(resid.r[1:(n.occasions-1)])/(n.occasions-1)) + (PI^2)/3 ) # Calculate residual error term
   # Linear recovery model
-  for(t in 1:(n.occasions-1)){
+  for(t in 1:5){
+    mu.r[t] <- mean.r + inprod(b2[1:3], harvest[t+ gap_sem, 1:3])  + inprod(b3[1:3], mu.fish[t+ gap_sem, 1:3]) + b2[4] * pel.eff[t + gap_sem]
+  }
+  for(t in 6:54){
     mu.r[t] <- mean.r + inprod(b2[1:3], harvest[t+ gap_sem, 1:3])  + inprod(b3[1:3], fish[t+ gap_sem, 1:3]) + b2[4] * pel.eff[t + gap_sem]
+  }
+  for(t in 55:(n.occasions-1)){
+    mu.r[t] <- mean.r + inprod(b2[1:3], mu.harv[t+ gap_sem, 1:3])  + inprod(b3[1:3], mu.fish[t+ gap_sem, 1:3]) + b2[4] * pel.eff[t + gap_sem]
+  }
+  for(t in 1:(n.occasions-1)){
     lr[t] ~ dnorm(mu.r[t], sd = sig.r)
     resid.r[t] <- (lr[t] - mean.r)^2
     # Recovery rate (logit scale)
-    for(l in 1:band_type){ 
+    for(l in 1:band_type){
       logit(r[l,t]) <- lr[t] + band.r[l]
     }
     # Breeding detection rate (logit scale)
@@ -317,14 +343,14 @@ nimble.code <- nimbleCode( {
     for(k in 1:n.state){
       F[k,1,t] <- 1        # Can't emigrate until old enough to breed
       F[k,2,t] <- 1        # Can't emigrate until old enough to breed
-      F[k,3,t] <- 1        # Can't emigrate until old enough to breed
+      F[k,3,t] <- mean.F        
       F[k,4,t] <- mean.F
       F[k,5,t] <- mean.F
       F[k,6,t] <- mean.F
       # Apply age-related constraints to state-specific fidelity terms
-      psi[k,1,t] <- 1     # Can't emigrate until old enough to breed
-      psi[k,2,t] <- 1     # Can't emigrate until old enough to breed
-      psi[k,3,t] <- 1     # Can't emigrate until old enough to breed
+      psi[k,1,t] <- 1        # Can't move to different state until potentially old enough to breed
+      psi[k,2,t] <- mean.psi     
+      psi[k,3,t] <- mean.psi     
       psi[k,4,t] <- mean.psi
       psi[k,5,t] <- mean.psi
       psi[k,6,t] <- mean.psi
@@ -486,9 +512,9 @@ nimble.code <- nimbleCode( {
 })
 
 
-#setwd('C:\\Users\\gibsond\\Desktop\\Current_Projects\\Manuscripts\\Manuscripts_2022\\ROYT\\Submission\\Data')
+setwd('C:\\Users\\gibsond\\Desktop\\ROTE_BARKER')
 
-load('model_files.rdata')
+load('model_files_new.rdata')
 sumFR <- files[[1]]
 sumCH <- data.matrix(files[[2]])
 fc <- files[[3]]
@@ -499,12 +525,14 @@ band <- files[[7]]
 age_class <- age_matrix
 age_class[age_class>5] <- 6
 
+covs <- read.csv('standardized_covariates.csv')
+
 
 # Bundle data
 nimble.data      <-  list(sumFR = sumFR,  one = sumFR, pel.eff = (covs$Hooks),
-                         I.harv = diag(3), I.fish = diag(3), I.surv = diag(3),I.p = diag(2),
-                            sst =  (covs$SST), tsem = scale(1:71)[1:71], tsur = scale(1:dim(sumCH)[2])[1: dim(sumCH)[2]],
-                        harvest = as.matrix(covs[,3:5]), fish  = as.matrix(covs[,7:9]))
+                          I.harv = diag(3), I.fish = diag(3), I.surv = diag(3),I.p = diag(2),
+                          sst =  (covs$SST), tsem = scale(1:71)[1:71], tsur = scale(1:dim(sumCH)[2])[1: dim(sumCH)[2]],
+                          harvest = as.matrix(covs[,3:5]), fish  = as.matrix(covs[,7:9]))
 pi <- pi
 nimble.constants <- list( n.occasions = dim(sumCH)[2], sumf = as.vector(fc), lc = as.vector(lc), sumCH = sumCH, n.age_class =3,
                           NsumCH = dim(sumCH)[1],n.age = 25, ac = c(1,2,3,4,5,rep(6,20)),n.ageclass = 6,age = age_matrix, age_class = age_class,
@@ -616,11 +644,11 @@ out <- clusterEvalQ(cl_ipm2, {
   
   modelConf  <- configureMCMC(model, useConjugacy = FALSE,
                               monitors2 = c('R','r','p','S','r','p','Rp','dev.clim','dev.harv','dev.fish','hooks','pel.eff','sd.y2','b1.std','b2.std','b3.std','sd.r2','rho.fish','rho.harv',
-                                            'rho.p','mu.harv','mu.fish','nu.hooks','b1','S.age','mu.S','S','b1','t.harv','t.fish','rho.surv','sig.surv','beta.cov','B0','beta.age'))
+                                            'rho.p','mu.harv','mu.fish','nu.hooks','b1','S.age','mu.S','S','b1','rho.surv','sig.surv','beta.cov','B0','beta.age'))
   modelMCMC  <- buildMCMC(modelConf)
   Cmodel     <- compileNimble(model)
   CmodelMCMC <- compileNimble(modelMCMC)
-  CmodelMCMC$run(100000, thin = 2, thin2 = 2, nburnin = 50000)
+  CmodelMCMC$run(150000, thin = 2, thin2 = 2, nburnin = 75000)
   return(list( as.mcmc(as.matrix(CmodelMCMC$mvSamples)),as.mcmc(as.matrix(CmodelMCMC$mvSamples2))))
 })
 end_time <- Sys.time()
@@ -638,3 +666,4 @@ mcmcList1 <- as.mcmc.list(lapply(samples1, mcmc))
 mcmcList2 <- as.mcmc.list(lapply(samples2, mcmc))
 
 stopCluster(cl_ipm2)
+
